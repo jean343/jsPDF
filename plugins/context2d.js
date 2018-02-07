@@ -186,7 +186,54 @@
             return {r, g, b, a, style};
         },
 
+        setFillGradient: function (style) {
+            var k = this.pdf.internal.scaleFactor;
+            var pageHeight = this.pdf.internal.pageSize.height;
+            var f2 = this.pdf.internal.f2;
+            const {stops} = style;
+
+            const [x0, y0] = this._matrix_map_point(this.ctx._transform, [style.x0, style.y0]);
+            const [x1, y1] = this._matrix_map_point(this.ctx._transform, [style.x1, style.y1]);
+
+            const Functions = [];
+            for (let i = 1; i < stops.length; i++) {
+                const rgba1 = this._getRGBA(stops[i - 1].color);
+                const rgba2 = this._getRGBA(stops[i].color);
+                Functions.push({
+                    FunctionType: 2,
+                    Domain: [0, 1],
+                    C0: [f2(rgba1.r / 255), f2(rgba1.g / 255), f2(rgba1.b / 255)],
+                    C1: [f2(rgba2.r / 255), f2(rgba2.g / 255), f2(rgba2.b / 255)],
+                    N: 1
+                })
+            }
+
+            const p = {
+                Type: 'Pattern',
+                PatternType: 2, // 2 = Shading
+                Shading: {
+                    ShadingType: 2,
+                    ColorSpace: 'DeviceRGB',
+                    Coords: [x0 * k, (pageHeight - y0) * k, x1 * k, (pageHeight - y1) * k],
+                    Function: {
+                        FunctionType: 3,
+                        Domain: [0, 1],
+                        Encode: [].concat.apply([], stops.map(s => ([0, 1]))),
+                        Bounds: stops.slice(1).map(s => f2(s.offset)),
+                        Functions
+                    },
+                    Extend: [true, true]
+                }
+            };
+
+            const pattern = this.pdf.createPattern(p);
+            this.pdf.internal.out(`/Pattern SCN/${pattern} scn`);
+        },
+
         setFillStyle: function (style) {
+			if( style.stops ){
+				return this.setFillGradient( style );
+			}
             var rgba = this._getRGBA(style);
 
             this.ctx.fillStyle = style;
@@ -1249,7 +1296,17 @@
                 default:
                     return y;
             }
-        }
+        },
+		createLinearGradient: function(x0, y0, x1, y1) {
+			const CanvasGradient = {
+				x0: x0, y0: y0, x1: x1, y1: y1,
+				stops: [],
+				addColorStop: function(offset, color){
+					CanvasGradient.stops.push({ offset: offset, color: color });
+				}
+			};
+			return CanvasGradient;
+		}
     }
     ;
 
